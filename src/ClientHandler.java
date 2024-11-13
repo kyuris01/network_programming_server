@@ -1,17 +1,24 @@
-import java.io.*;
-import java.net.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.util.ArrayList;
 
-public class ClientHandler implements Runnable {
+public class ClientHandler{ //게임참여자의 정보 담는 클래스
+    private Boolean isBid = false; //호가 여부
+    private Boolean isParticipating = false; //해당 응찰라운드 참여여부
+    private Integer bidPrice;
+
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
+
     private String clientName;
-
-    //경매 참여 여부 플래그
-    private boolean participating = false;
-
-    //소지금
     private int balance = 100;
+    private int bidAmount = 0;
+    ArrayList<String> items = new ArrayList<>();
+
 
     public ClientHandler(Socket socket) throws IOException {
         this.socket = socket;
@@ -19,12 +26,76 @@ public class ClientHandler implements Runnable {
         this.out = new PrintWriter(socket.getOutputStream(), true);
     }
 
+    public BufferedReader getIn() {
+        return in;
+    }
+
+    public PrintWriter getOut() {
+        return out;
+    }
+
+    public int getBalance() {
+        return balance;
+    }
+
+    public void setBalance(int balance) {
+        this.balance = balance;
+    }
+
+    public ArrayList<String> getItems() {
+        return items;
+    }
+
+    public void setItems(ArrayList<String> items) {
+        this.items = items;
+    }
+
+    public int getBidAmount() {
+        return bidAmount;
+    }
+
+    public void setBidAmount(int bidAmount) {
+        this.bidAmount = bidAmount;
+    }
+
     public String getClientName() {
         return clientName;
     }
 
-    public boolean isParticipating() {
-        return participating;
+    public void setClientName(String clientName) {
+        this.clientName = clientName;
+    }
+
+    public Boolean getBid() {
+        return isBid;
+    }
+
+    public void setBid(Boolean bid) {
+        isBid = bid;
+    }
+
+    public Boolean getParticipating() {
+        return isParticipating;
+    }
+
+    public void setParticipating(Boolean participating) {
+        isParticipating = participating;
+    }
+
+    public Integer getBidPrice() {
+        return bidPrice;
+    }
+
+    public void setBidPrice(Integer bidPrice) {
+        this.bidPrice = bidPrice;
+    }
+
+    public Socket getSocket() {
+        return socket;
+    }
+
+    public void setSocket(Socket socket) {
+        this.socket = socket;
     }
 
     public void addFunds(int amount) {
@@ -35,46 +106,68 @@ public class ClientHandler implements Runnable {
     public void sendMessage(String message) {
         out.println(message);
     }
-
-    @Override
-    public void run() {
-        try {
-            clientName = in.readLine();
-
-            System.out.println("클라이언트 \"" + clientName+ "\" 가 연결되었습니다: " + socket);
-            AuctionServer.broadcastMessage(clientName + " 님이 참가했습니다.");
-
-            while (true) {
-                String command = in.readLine();
-                if (command == null) break;
-
-                if (command.startsWith("참가")) {
-                    participating = true;
-                    AuctionServer.broadcastMessage(clientName + " 님이 경매에 참가했습니다.");
-                } else if (command.startsWith("호가")) {
-                    int bidAmount = Integer.parseInt(command.split(" ")[1]);
-                    if (balance >= bidAmount) {
-                        balance -= bidAmount;
-                        AuctionServer.placeBid(this, bidAmount);
-                    } else {
-                        sendMessage("잔액 부족으로 호가 실패.");
-                    }
-                } else if (command.startsWith("불참여")) {
-                    participating = false;
-                    sendMessage("경매에 불참했습니다.");
-                } else if (command.startsWith("채팅")) {
-                    String chatMessage = command.substring(3); // "채팅 " 부분을 제거
-                    AuctionServer.broadcastMessage("채팅 " + clientName + ": " + chatMessage);
-                }
-            }
-        } catch (IOException e) {
-            System.out.println("연결 종료: " + clientName);
-        } finally {
-            try {
-                socket.close();
-            } catch (IOException e) {
-                System.out.println("소켓 종료 오류");
-            }
-        }
+    
+    public void participationProcess() {
+        
     }
+
+    public String userInputProcessor () {
+        String userMessage = "";
+        String userCommand = "";
+        String chatMessage = "";
+
+        try {
+            userMessage = in.readLine();
+
+
+            if (userMessage.startsWith("호가")) {
+                bidAmount = Integer.parseInt(userMessage.split(" ")[1]);
+                userCommand = userMessage.split(" ")[0];
+            } else if (userMessage.startsWith("채팅")) {
+                chatMessage = userMessage.substring(3);
+                userCommand = userMessage.split(" ")[0];
+            } else {
+                userCommand = userMessage;
+            }
+
+//            switch (userCommand) {
+//                case "참가":
+//                    isParticipating = true;
+//                    AuctionServer.getParticipantsList().add(this);
+//                    AuctionServer.broadcastMessage(clientName + " 님이 경매에 참여했습니다");
+//                    break;
+//                case "호가":
+//                    isBid = true;
+//                    if( balance >= bidAmount ) {
+//                        balance -= bidAmount;
+//                        AuctionServer.placeBid(this, bidAmount);
+//                    } else {
+//                        sendMessage("잔액이 부족합니다!");
+//                    }
+//                    break;
+//                case "불참여":
+//                    isParticipating = false;
+//                    sendMessage("경매에 불참합니다");
+//                    sendMessage("게임이 끝날때까지 대기합니다");
+//                    break;
+//                case "채팅":
+//                    AuctionServer.broadcastMessage("채팅 " + clientName + ": " + chatMessage);
+//                    break;
+//                default:
+//                    sendMessage("잘못된입력입니다");
+//                    System.out.println("잘못된입력");
+//            }
+
+
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return userCommand;
+    }
+
+    public void run() {
+        userInputProcessor();
+    }
+
 }
