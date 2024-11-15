@@ -8,11 +8,12 @@ import java.util.ArrayList;
 public class ClientHandler{ //게임참여자의 정보 담는 클래스
     private Boolean isBid = false; //호가 여부
     private Boolean isParticipating = false; //해당 응찰라운드 참여여부
-    private Integer bidPrice;
+    private Integer bidPrice; //낙찰되었을때의 낙찰값
 
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
+    private String userCommand = null;
 
     private String clientName;
     private int balance = 100;
@@ -24,6 +25,14 @@ public class ClientHandler{ //게임참여자의 정보 담는 클래스
         this.socket = socket;
         this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         this.out = new PrintWriter(socket.getOutputStream(), true);
+    }
+
+    public String getUserCommand() {
+        return userCommand;
+    }
+
+    public void setUserCommand(String userCommand) {
+        this.userCommand = userCommand;
     }
 
     public BufferedReader getIn() {
@@ -112,9 +121,9 @@ public class ClientHandler{ //게임참여자의 정보 담는 클래스
     }
 
     public String userInputProcessor () {
-        String userMessage = "";
-        String userCommand = "";
-        String chatMessage = "";
+        String userMessage = null;
+
+        String chatMessage = null;
 
         try {
             userMessage = in.readLine();
@@ -127,6 +136,7 @@ public class ClientHandler{ //게임참여자의 정보 담는 클래스
                 chatMessage = userMessage.substring(3);
                 userCommand = userMessage.split(" ")[0];
             } else {
+                setParticipating(true);
                 userCommand = userMessage;
             }
 

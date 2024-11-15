@@ -1,7 +1,4 @@
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,7 +19,7 @@ public class AuctionServer extends Thread {
     private Boolean bidUpdated = false;
     private static Boolean endGame = false;
     private static Boolean endRound = false;
-    private static final int TIMEOUT = 5;
+    private static final int TIMEOUT = 7;
 
 
 
@@ -61,13 +58,7 @@ public class AuctionServer extends Thread {
         //broadcastMessageToPlayer를 쓰면 응찰참여 클라이언트에게만 메시지 전달됨. 근데 아직 응찰여부 설정안했으므로 false로 되어있어서 클라이언트쪽에 이 메시지 전달안되었던듯
     }
 
-    public static synchronized void placeBid(ClientHandler client, int bidAmount) {
-        if (bidAmount > currentBid) {
-            currentBid = bidAmount;
-            highestBidder = client;
-            broadcastMessageToPlayers("새로운 최고 입찰: " + bidAmount + "원 - " + client.getClientName());
-        }
-    }
+
 
 
 
@@ -107,6 +98,7 @@ public class AuctionServer extends Thread {
             client.setBid(false);
             client.setParticipating(false);
             client.setBidPrice(0);
+            client.setBidAmount(0);
             participantsList.remove(client);
         }
 
@@ -162,12 +154,30 @@ public class AuctionServer extends Thread {
     public void checkParticipation() throws InterruptedException {
 
         broadcastMessage("응찰하시겠습니까?");
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         for (ClientHandler client : WaitingThread.clientQueue) {
-            String userMsg = client.userInputProcessor();
-            if (!(userMsg.equals("참가") || userMsg.equals("불참여"))) {
+            Future<String> future = executor.submit(() -> client.userInputProcessor());
+
+            try {
+                future.get(TIMEOUT, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                client.sendMessage("응찰 대기시간이 지났습니다");
+                executor.shutdownNow();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        for (ClientHandler client : WaitingThread.clientQueue) {
+            String userCmd = client.getUserCommand();
+            if (!client.getParticipating()) {
+                continue;
+            }
+            if (!(userCmd.equals("참가") || userCmd.equals("불참여"))) {
                 client.sendMessage("잘못된 입력값입니다");
             } else {
-                if (userMsg.equals("참가")) {
+                if (userCmd.equals("참가")) {
                     client.setParticipating(true);
                     getParticipantsList().add(client);
                     broadcastMessage(client.getClientName() + " 님이 경매에 참여했습니다");
@@ -181,6 +191,12 @@ public class AuctionServer extends Thread {
         }
 
 
+    }
+
+    public static synchronized void placeBid(ClientHandler client, int bidAmount) {
+        currentBid +=bidAmount;
+        highestBidder = client;
+        broadcastMessageToPlayers("새로운 최고 입찰: " + currentBid + "원 - " + client.getClientName());
     }
 
 
@@ -200,37 +216,91 @@ public class AuctionServer extends Thread {
 
     public void roundRefresher() {
 
-        ExecutorService clientExecutor = Executors.newFixedThreadPool(WaitingThread.clientNum);
+        ExecutorService clientExecutor = Executors.newCachedThreadPool();
         ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(WaitingThread.clientNum);
         AtomicBoolean isReset = new AtomicBoolean(false);
         AtomicBoolean clientExecutorDone = new AtomicBoolean(false);
 
 
+//        try {
+//            isReset.set(false);
+//
+//            broadcastMessageToPlayers("호가를 시작하세요");
+//            ScheduledFuture<?> timeoutFuture = timeoutScheduler.scheduleWithFixedDelay(() -> {
+//                if (!isReset.get()) {
+//                    System.out.println("대기 시간이 만료되었습니다.");
+//                    broadcastMessageToPlayers("대기시간이 만료되었습니다.");
+//                    timeoutScheduler.shutdown();
+//                    clientExecutor.shutdownNow();
+//                    clientExecutorDone.set(true);
+//                } else {
+//                    isReset.set(false); // 타이머를 리셋할 필요가 있는 경우
+//                }
+//            }, TIMEOUT, TIMEOUT, TimeUnit.SECONDS);
+//
+//
+//
+//            for (ClientHandler participant : participantsList) {
+//                clientExecutor.submit(() -> {
+//                    try {
+//
+//                        while (clientBidReceiver(participant) && !clientExecutorDone.get()) {
+//                            System.out.println(participant.getClientName() + "클라이언트 입력 받음: " + participant.getBidAmount());
+//                            isReset.set(true); // 입력이 올 때마다 타이머를 리셋할 수 있도록 설정
+//                        }
+//                    } catch (Exception e) {
+//                        e.printStackTrace();
+//                    }
+//                });
+//            }
+//
+//            // 타이머가 종료될 때까지 대기
+////            clientExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+//            try {
+//                timeoutFuture.get();
+//            } catch (CancellationException e) {
+//                System.out.println("타이머가 취소되었습니다.");
+//            }
+//
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        } finally {
+//            if (!timeoutScheduler.isShutdown()) {
+//                timeoutScheduler.shutdownNow();
+//            }
+//            if (!clientExecutor.isShutdown()) {
+//                clientExecutor.shutdownNow();
+//            }
+//            System.out.println("Refresher 종료");
+//        }
         try {
             isReset.set(false);
-
             broadcastMessageToPlayers("호가를 시작하세요");
-            ScheduledFuture<?> timeoutFuture = timeoutScheduler.scheduleWithFixedDelay(() -> {
-                if (!isReset.get()) {
-                    System.out.println("대기 시간이 만료되었습니다.");
-                    broadcastMessageToPlayers("대기시간이 만료되었습니다.");
-                    timeoutScheduler.shutdown();
-                    clientExecutor.shutdownNow();
-                    clientExecutorDone.set(true);
-                } else {
-                    isReset.set(false); // 타이머를 리셋할 필요가 있는 경우
+
+            Runnable timeoutTask = new Runnable() {
+                @Override
+                public void run() {
+                    if (!isReset.get()) {
+                        System.out.println("대기 시간이 만료되었습니다.");
+                        broadcastMessageToPlayers("대기시간이 만료되었습니다.");
+                        timeoutScheduler.shutdown();
+                        clientExecutor.shutdownNow();
+                        clientExecutorDone.set(true);
+                    } else {
+                        isReset.set(false);  // 타이머를 리셋
+                        timeoutScheduler.schedule(this, TIMEOUT, TimeUnit.SECONDS);  // 새로운 타이머 예약
+                    }
                 }
-            }, TIMEOUT, TIMEOUT, TimeUnit.SECONDS);
+            };
 
-
+            timeoutScheduler.schedule(timeoutTask, TIMEOUT, TimeUnit.SECONDS);
 
             for (ClientHandler participant : participantsList) {
                 clientExecutor.submit(() -> {
                     try {
-
                         while (clientBidReceiver(participant) && !clientExecutorDone.get()) {
                             System.out.println(participant.getClientName() + "클라이언트 입력 받음: " + participant.getBidAmount());
-                            isReset.set(true); // 입력이 올 때마다 타이머를 리셋할 수 있도록 설정
+                            isReset.set(true); // 입력 시 타이머 리셋 플래그 설정
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -238,13 +308,7 @@ public class AuctionServer extends Thread {
                 });
             }
 
-            // 타이머가 종료될 때까지 대기
-//            clientExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-            try {
-                timeoutFuture.get();
-            } catch (CancellationException e) {
-                System.out.println("타이머가 취소되었습니다.");
-            }
+            timeoutScheduler.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
         } catch (Exception e) {
             e.printStackTrace();
